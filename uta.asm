@@ -61,21 +61,19 @@ main_loop:
   jmp .scan
 
 found:
-  add cx, di
-  add cx, 3
-
-  test byte [di+2], F_IMMEDIATE
+  ; SI = CFA address (cmpsb advanced past the matched name)
+  mov al, [di+2]
+  and al, F_IMMEDIATE
+  or al, [s_state]
   jnz .execute
-  cmp word [s_state], 0
-  jne .execute
 
   mov di, [s_here]
-  mov ax, cx
+  mov ax, si
   stosw
   mov [s_here], di
   jmp main_loop
 .execute:
-  mov [trampoline], cx
+  mov [trampoline], si
   mov si, trampoline
   jmp NEXT
 
@@ -211,15 +209,13 @@ cfa_key:
 
 ; DOCOL is invoked by every colon definition's `call docol` prologue.
 ; The CALL has pushed the body start onto SP (briefly polluting the data
-; stack); we pop it, stash the current IP on the return stack, and resume
-; interpreting at the body.
+; stack); we save the current IP to the return stack, then `pop si` lifts
+; the body off SP and falls through into NEXT.
 docol:
-  pop ax
   dec bp
   dec bp
   mov [bp], si
-  xchg ax, si
-  jmp NEXT
+  pop si
 
 ; NEXT sits in the middle of the primitives section so every primitive's
 ; `jmp NEXT` fits in a 2-byte short jump.
@@ -239,8 +235,7 @@ header_sat:
   dw header_emit
   db 2, 's@'
 cfa_sat:
-  mov ax, state_struct
-  push ax
+  push word state_struct
   jmp NEXT
 
 header_colon:
@@ -249,8 +244,8 @@ header_colon:
 cfa_colon:
   call parse_word
   mov di, [s_here]
-  mov ax, [s_latest]
-  mov [s_latest], di
+  mov ax, di
+  xchg ax, [s_latest]
   stosw
   mov al, cl
   stosb

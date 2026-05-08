@@ -1,11 +1,11 @@
 # 🌸 UtaForth
 
-> 354-byte 16-bit Forth in pure Netwide Assembler (NASM)
+> 342-byte 16-bit Forth in pure Netwide Assembler (NASM)
 
 ## Files
 
 - [`uta.asm`](uta.asm): Forth source (NASM, `BITS 16`, `ORG 0x100`; assembles to a DOS .COM)
-- [`uta.com`](uta.com): Assembled binary (354 bytes)
+- [`uta.com`](uta.com): Assembled binary (342 bytes)
 - [`run.py`](run.py): Minimal Unicorn-based 8086 emulator that loads `uta.com` and dispatches DOS INT 20h/21h/29h
 - [`bf.fth`](bf.fth), [`hello.fth`](hello.fth): Sample Forth programs
 
@@ -22,7 +22,7 @@ python3 run.py uta.com bf.fth
 
 Verified under DOSBox-X (`uta.com < hello.fth`, `uta.com < bf.fth`). The binary uses only `INT 21h/AH=3F,8`, `INT 29h`, `INT 20h`, and `push sp` (286+ semantics), so it should also run on real DOS. Filenames are kept 8.3-compatible.
 
-## What's in 354 Bytes
+## What's in 342 Bytes
 
 13 primitives, the only ones the bootstrap can't define for itself:
 
@@ -81,6 +81,10 @@ Everything else (`dup`, `drop`, `over`, `swap`, `if`/`then`, `do`/`loop`, `c@`, 
 | `INT 29h` for emit                       | 386 |
 | Direct-threaded code (drop CFA cells)    | 363 |
 | Reposition NEXT mid-primitives           | 354 |
+| `found:` reuses post-`cmpsb` SI as CFA   | 349 |
+| Merge immediate/state test into one OR   | 347 |
+| `pop si` in DOCOL, fall through to NEXT  | 344 |
+| `push imm16` for `s@`; `xchg` link in `:` | 342 |
 
 ## Licence
 
