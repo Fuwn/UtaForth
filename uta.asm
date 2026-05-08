@@ -1,4 +1,4 @@
-; UtaForth - 16-bit indirect-threaded Forth as a DOS .COM file
+; UtaForth - 16-bit direct-threaded Forth as a DOS .COM file
 ;
 ; Build: nasm -f bin uta.asm -o uta.com
 ; Run:   python3 run.py uta.com bf.fth
@@ -15,7 +15,7 @@
 ;
 ; Memory layout: input buffer at 0xC000 is read once at startup;
 ; whatever bytes the OS doesn't fill stay zero (Unicorn/DOS behavior),
-; so a 0 byte serves as the EOF sentinel, and we never store/read a length.
+; so a 0 byte serves as the EOF sentinel, and we never store/read a length
 
 BITS 16
 ORG 0x100
@@ -82,21 +82,6 @@ found:
 done:
   int 0x20
 
-NEXT:
-  lodsw
-  xchg ax, bx
-  jmp [bx]
-
-; DOCOL: code address used by every colon definition's CFA cell.
-; When NEXT jumps here, BX holds the CFA cell address; the body
-; starts immediately after it.
-docol:
-  dec bp
-  dec bp
-  mov [bp], si
-  lea si, [bx+2]
-  jmp NEXT
-
 ; Returns: BX = name address, CX = length (CX=0 => EOF).
 parse_word:
   mov di, [s_in]
@@ -132,26 +117,22 @@ s_in:     dw INPUT_BUFFER
 s_latest: dw last_primitive
 s_here:   dw heap_start
 
-; The outer interpreter executes a single word by parking its CFA
-; in trampoline[0], then setting SI to trampoline and jumping to NEXT. After
-; that word finishes, NEXT loads bye_cfa, whose code-field jumps
-; back into the interpreter loop.
+; The outer interpreter parks the target CFA in trampoline[0], sets SI
+; to trampoline, and jmps NEXT. After the word's NEXT lodsw's the second
+; cell, `jmp ax` lands on main_loop.
 trampoline: dw 0
-            dw bye_cfa
-bye_cfa:    dw main_loop
+            dw main_loop
 
 ; Dictionary entry layout:
-;   +0 link         (2 bytes)
-;   +2 flags|length (1 byte; bit 7 = immediate)
-;   +3 name         (length bytes)
-;   +3+length CFA   (2 bytes; value is the code address)
-;   +5+length body  (colon definitions only)
+;   +0        link         (2 bytes)
+;   +2        flags|length (1 byte; bit 7 = immediate)
+;   +3        name         (length bytes)
+;   +3+length CFA          (direct code; colons begin with `call docol`)
 
 header_at:
   dw 0
   db 1, '@'
 cfa_at:
-  dw $+2
   pop bx
   push word [bx]
   jmp NEXT
@@ -160,7 +141,6 @@ header_store:
   dw header_at
   db 1, '!'
 cfa_store:
-  dw $+2
   pop bx
   pop word [bx]
   jmp NEXT
@@ -169,7 +149,6 @@ header_spat:
   dw header_store
   db 3, 'sp@'
 cfa_spat:
-  dw $+2
   push sp ; 286+ pushes old SP
   jmp NEXT
 
@@ -177,7 +156,6 @@ header_rpat:
   dw header_spat
   db 3, 'rp@'
 cfa_rpat:
-  dw $+2
   push bp
   jmp NEXT
 
@@ -185,7 +163,6 @@ header_zhash:
   dw header_rpat
   db 2, '0#'
 cfa_zhash:
-  dw $+2
   pop ax
   neg ax
   sbb ax, ax
@@ -196,7 +173,6 @@ header_plus:
   dw header_zhash
   db 1, '+'
 cfa_plus:
-  dw $+2
   pop ax
   pop bx
   add ax, bx
@@ -207,7 +183,6 @@ header_nand:
   dw header_plus
   db 4, 'nand'
 cfa_nand:
-  dw $+2
   pop ax
   pop bx
   and ax, bx
@@ -219,7 +194,6 @@ header_exit:
   dw header_nand
   db 4, 'exit'
 cfa_exit:
-  dw $+2
   mov si, [bp]
   inc bp
   inc bp
@@ -229,18 +203,34 @@ header_key:
   dw header_exit
   db 3, 'key'
 cfa_key:
-  dw $+2
   mov ah, 8
   int 0x21
   xor ah, ah
   push ax
   jmp NEXT
 
+; DOCOL is invoked by every colon definition's `call docol` prologue.
+; The CALL has pushed the body start onto SP (briefly polluting the data
+; stack); we pop it, stash the current IP on the return stack, and resume
+; interpreting at the body.
+docol:
+  pop ax
+  dec bp
+  dec bp
+  mov [bp], si
+  xchg ax, si
+  jmp NEXT
+
+; NEXT sits in the middle of the primitives section so every primitive's
+; `jmp NEXT` fits in a 2-byte short jump.
+NEXT:
+  lodsw
+  jmp ax
+
 header_emit:
   dw header_key
   db 4, 'emit'
 cfa_emit:
-  dw $+2
   pop ax
   int 0x29 ; DOS fast console output (AL -> stdout)
   jmp NEXT
@@ -249,7 +239,6 @@ header_sat:
   dw header_emit
   db 2, 's@'
 cfa_sat:
-  dw $+2
   mov ax, state_struct
   push ax
   jmp NEXT
@@ -258,7 +247,6 @@ header_colon:
   dw header_sat
   db 1, ':'
 cfa_colon:
-  dw $+2
   call parse_word
   mov di, [s_here]
   mov ax, [s_latest]
@@ -272,8 +260,12 @@ cfa_colon:
   rep movsb
   pop si
 
-  mov ax, docol
+  mov al, 0xE8     ; CALL rel16: emit `call docol` as the colon prologue
+  stosb
+  mov ax, docol - 2
+  sub ax, di
   stosw
+
   mov [s_here], di
   mov [s_state], cl ; CX is 0 after rep movsb -> compile mode
   jmp NEXT
@@ -282,7 +274,6 @@ header_semi:
   dw header_colon
   db F_IMMEDIATE|1, ';'
 cfa_semi:
-  dw $+2
   mov ax, cfa_exit
   mov di, [s_here]
   stosw

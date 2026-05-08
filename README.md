@@ -1,11 +1,11 @@
 # 🌸 UtaForth
 
-> 386-byte 16-bit Forth in pure Netwide Assembler (NASM)
+> 354-byte 16-bit Forth in pure Netwide Assembler (NASM)
 
 ## Files
 
 - [`uta.asm`](uta.asm): Forth source (NASM, `BITS 16`, `ORG 0x100`; assembles to a DOS .COM)
-- [`uta.com`](uta.com): Assembled binary (386 bytes)
+- [`uta.com`](uta.com): Assembled binary (354 bytes)
 - [`run.py`](run.py): Minimal Unicorn-based 8086 emulator that loads `uta.com` and dispatches DOS INT 20h/21h/29h
 - [`bf.fth`](bf.fth), [`hello.fth`](hello.fth): Sample Forth programs
 
@@ -22,7 +22,7 @@ python3 run.py uta.com bf.fth
 
 Verified under DOSBox-X (`uta.com < hello.fth`, `uta.com < bf.fth`). The binary uses only `INT 21h/AH=3F,8`, `INT 29h`, `INT 20h`, and `push sp` (286+ semantics), so it should also run on real DOS. Filenames are kept 8.3-compatible.
 
-## What's in 386 Bytes
+## What's in 354 Bytes
 
 13 primitives, the only ones the bootstrap can't define for itself:
 
@@ -46,12 +46,13 @@ Everything else (`dup`, `drop`, `over`, `swap`, `if`/`then`, `do`/`loop`, `c@`, 
 
 ## Architecture
 
-- **Indirect-threaded code (ITC).** Each compiled cell is a 16-bit address of a CFA cell, and the CFA cell holds the actual code address. `NEXT = lodsw/xchg ax,bx/jmp [bx]` (4 bytes).
+- **Direct-threaded code (DTC).** Each compiled cell is a 16-bit address of executable code. For primitives that's the body itself; for colon definitions it's a `call docol` prologue followed by the body cells. `NEXT = lodsw/jmp ax` (3 bytes).
 - **Cells are 2 bytes** because the bootstrap hard-codes that (`: cells lit [ 2 , ] ;`, `here @ 2 + here !`).
 - **SI = Forth IP, BP = return stack, SP = data stack, AX/BX/CX/DX/DI = scratch.** The outer interpreter freely uses CALL/RET on SP because every push has a matching pop, leaving the user's data stack contents untouched.
-- **Outer interpreter <-> inner interpreter** transition via a 6-byte trampoline: stash the target CFA at `tramp[0]`, set SI to `tramp`, `jmp NEXT`. After the word finishes, its `jmp NEXT` lands on `tramp[2]`, whose CFA cell points to `main_loop`.
+- **Outer interpreter <-> inner interpreter** transition via a 4-byte trampoline: stash the target CFA at `tramp[0]`, set SI to `tramp`, `jmp NEXT`. After the word finishes, its `jmp NEXT` lodsw's `tramp[2]` and `jmp ax` lands on `main_loop`.
 - **Input** is slurped once at startup (DOS INT 21h AH=3F). The buffer (zero-initialised) doubles as its own EOF sentinel: when the parser hits a 0 byte, it returns CX=0.
-- **Dictionary entry layout:** `link(2) | flags|length(1) | name | CFA(2) | body...`. `latest @ 2 +` is the flags byte (bit 7 = immediate), exactly as the bootstrap expects.
+- **Dictionary entry layout:** `link(2) | flags|length(1) | name | CFA...`. The CFA is direct code (primitives) or a `call docol` prologue plus body cells (colons). `latest @ 2 +` is the flags byte (bit 7 = immediate), exactly as the bootstrap expects.
+- **NEXT lives in the middle of the primitives section** so every primitive's `jmp NEXT` is a 2-byte short jump.
 
 ## Notes on the Test Files
 
@@ -78,6 +79,8 @@ Everything else (`dup`, `drop`, `over`, `swap`, `if`/`then`, `do`/`loop`, `c@`, 
 | `inc byte [s_state]` in `;`              | 389 |
 | Compact `parse_word` scan loop           | 388 |
 | `INT 29h` for emit                       | 386 |
+| Direct-threaded code (drop CFA cells)    | 363 |
+| Reposition NEXT mid-primitives           | 354 |
 
 ## Licence
 
