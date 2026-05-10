@@ -202,26 +202,24 @@ cfa_key:
   mov ah, 8
   int 0x21
   cbw
-  jmp pushax
+
+; cfa_key, pushax, and NEXT are a fall-through chain: cfa_key drops into
+; pushax, pushax drops into NEXT.
+pushax:
+  push ax
+NEXT:
+  lodsw
+  jmp ax
 
 ; DOCOL is invoked by every colon definition's `call docol` prologue.
 ; The CALL has pushed the body start onto SP (briefly polluting the data
 ; stack); we save the current IP to the return stack, then `pop si` lifts
-; the body off SP and falls through into NEXT.
+; the body off SP.
 docol:
   dec bp
   dec bp
   mov [bp], si
   pop si
-
-; NEXT sits in the middle of the primitives section so every primitive's
-; `jmp NEXT` fits in a 2-byte short jump.
-NEXT:
-  lodsw
-  jmp ax
-
-pushax:
-  push ax
   jmp NEXT
 
 header_emit:
