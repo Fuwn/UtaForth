@@ -123,6 +123,17 @@ main_loop_cell: dw main_loop
 ;   +2        flags|length (1 byte; bit 7 = immediate)
 ;   +3        name         (length bytes)
 ;   +3+length CFA          (direct code; colons begin with `call docol`)
+;
+; header_semi sits at the top so cfa_semi's jmp to compile_and_loop is
+; rel8. Physical order is independent of chain order (set by `dw link`).
+
+header_semi:
+  dw header_colon
+  db F_IMMEDIATE|1, ';'
+cfa_semi:
+  mov ax, cfa_exit
+  inc byte [bx] ; the ; word is only legal in compile mode (state=0 -> 1)
+  jmp compile_and_loop
 
 header_at:
   dw 0
@@ -259,14 +270,6 @@ cfa_colon:
   mov [bx+6], di
   mov [bx], cl ; CX is 0 after rep movsb -> compile mode
   jmp NEXT
-
-header_semi:
-  dw header_colon
-  db F_IMMEDIATE|1, ';'
-cfa_semi:
-  mov ax, cfa_exit
-  inc byte [bx] ; the ; word is only legal in compile mode (state=0 -> 1)
-  jmp compile_and_loop
 
 last_primitive equ header_semi
 
