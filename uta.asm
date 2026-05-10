@@ -66,14 +66,16 @@ found:
   mov al, [di+2]
   and al, F_IMMEDIATE
   or al, [bx]
-  jnz .execute
+  jnz execute_word
 
+  xchg ax, si
+compile_and_loop:
   mov di, [bx+6]
-  mov ax, si
   stosw
   mov [bx+6], di
   jmp main_loop
-.execute:
+
+execute_word:
   mov [trampoline], si
   mov si, trampoline
   jmp NEXT
@@ -81,18 +83,17 @@ found:
 done:
   int 0x20
 
-; Returns: BX = name address, CX = length (CX=0 => EOF).
+; Returns: DX = name address, CX = length (CX=0 => EOF).
 parse_word:
-  push si
-  mov si, [bx+2]
+  xchg si, [bx+2]
   xor cx, cx
 .skip:
+  mov dx, si
   lodsb
   test al, al
   jz .done
   cmp al, ' '
   jbe .skip
-  lea dx, [si-1]
 .scan:
   lodsb
   cmp al, ' '
@@ -101,8 +102,7 @@ parse_word:
   mov cx, si
   sub cx, dx
 .done:
-  mov [bx+2], si
-  pop si
+  xchg si, [bx+2]
   ret
 
 ; State struct: s@ returns the address of state_struct.
@@ -271,11 +271,8 @@ header_semi:
   db F_IMMEDIATE|1, ';'
 cfa_semi:
   mov ax, cfa_exit
-  mov di, [bx+6]
-  stosw
-  mov [bx+6], di
   inc byte [bx] ; the ; word is only legal in compile mode (state=0 -> 1)
-  jmp NEXT
+  jmp compile_and_loop
 
 last_primitive equ header_semi
 
