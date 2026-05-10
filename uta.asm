@@ -27,7 +27,6 @@ RETURN_STACK_TOP  equ 0xE000
 
 start:
   mov bp, RETURN_STACK_TOP
-  cld
 
   ; BX is already 0 at .COM entry (and in Unicorn) -> stdin.
   mov ah, 0x3F
@@ -35,11 +34,13 @@ start:
   mov dx, INPUT_BUFFER
   int 0x21
 
+  mov bx, state_struct
+
 main_loop:
   call parse_word
   jcxz done
 
-  mov di, [s_latest]
+  mov di, [bx+4]
 .scan:
   test di, di
   jz main_loop
@@ -51,7 +52,7 @@ main_loop:
   push di
   push cx
   lea si, [di+3]
-  mov di, bx
+  mov di, dx
   repe cmpsb
   pop cx
   pop di
@@ -64,13 +65,13 @@ found:
   ; SI = CFA address (cmpsb advanced past the matched name)
   mov al, [di+2]
   and al, F_IMMEDIATE
-  or al, [s_state]
+  or al, [bx]
   jnz .execute
 
-  mov di, [s_here]
+  mov di, [bx+6]
   mov ax, si
   stosw
-  mov [s_here], di
+  mov [bx+6], di
   jmp main_loop
 .execute:
   mov [trampoline], si
@@ -82,26 +83,26 @@ done:
 
 ; Returns: BX = name address, CX = length (CX=0 => EOF).
 parse_word:
-  mov di, [s_in]
+  push si
+  mov si, [bx+2]
   xor cx, cx
 .skip:
-  mov al, [di]
+  lodsb
   test al, al
   jz .done
-  inc di
   cmp al, ' '
   jbe .skip
-  lea bx, [di-1]
+  lea dx, [si-1]
 .scan:
-  mov al, [di]
-  inc di
+  lodsb
   cmp al, ' '
   ja .scan
-  dec di
-  mov cx, di
-  sub cx, bx
+  dec si
+  mov cx, si
+  sub cx, dx
 .done:
-  mov [s_in], di
+  mov [bx+2], si
+  pop si
   ret
 
 ; State struct: s@ returns the address of state_struct.
@@ -131,16 +132,16 @@ header_at:
   dw 0
   db 1, '@'
 cfa_at:
-  pop bx
-  push word [bx]
+  pop di
+  push word [di]
   jmp NEXT
 
 header_store:
   dw header_at
   db 1, '!'
 cfa_store:
-  pop bx
-  pop word [bx]
+  pop di
+  pop word [di]
   jmp NEXT
 
 header_spat:
@@ -164,29 +165,26 @@ cfa_zhash:
   pop ax
   neg ax
   sbb ax, ax
-  push ax
-  jmp NEXT
+  jmp pushax
 
 header_plus:
   dw header_zhash
   db 1, '+'
 cfa_plus:
   pop ax
-  pop bx
-  add ax, bx
-  push ax
-  jmp NEXT
+  pop di
+  add ax, di
+  jmp pushax
 
 header_nand:
   dw header_plus
   db 4, 'nand'
 cfa_nand:
   pop ax
-  pop bx
-  and ax, bx
+  pop di
+  and ax, di
   not ax
-  push ax
-  jmp NEXT
+  jmp pushax
 
 header_exit:
   dw header_nand
@@ -203,9 +201,8 @@ header_key:
 cfa_key:
   mov ah, 8
   int 0x21
-  xor ah, ah
-  push ax
-  jmp NEXT
+  cbw
+  jmp pushax
 
 ; DOCOL is invoked by every colon definition's `call docol` prologue.
 ; The CALL has pushed the body start onto SP (briefly polluting the data
@@ -223,6 +220,10 @@ NEXT:
   lodsw
   jmp ax
 
+pushax:
+  push ax
+  jmp NEXT
+
 header_emit:
   dw header_key
   db 4, 'emit'
@@ -235,7 +236,7 @@ header_sat:
   dw header_emit
   db 2, 's@'
 cfa_sat:
-  push word state_struct
+  push bx
   jmp NEXT
 
 header_colon:
@@ -243,15 +244,15 @@ header_colon:
   db 1, ':'
 cfa_colon:
   call parse_word
-  mov di, [s_here]
+  mov di, [bx+6]
   mov ax, di
-  xchg ax, [s_latest]
+  xchg ax, [bx+4]
   stosw
   mov al, cl
   stosb
 
   push si
-  mov si, bx
+  mov si, dx
   rep movsb
   pop si
 
@@ -261,8 +262,8 @@ cfa_colon:
   sub ax, di
   stosw
 
-  mov [s_here], di
-  mov [s_state], cl ; CX is 0 after rep movsb -> compile mode
+  mov [bx+6], di
+  mov [bx], cl ; CX is 0 after rep movsb -> compile mode
   jmp NEXT
 
 header_semi:
@@ -270,10 +271,10 @@ header_semi:
   db F_IMMEDIATE|1, ';'
 cfa_semi:
   mov ax, cfa_exit
-  mov di, [s_here]
+  mov di, [bx+6]
   stosw
-  mov [s_here], di
-  inc byte [s_state] ; the ; word is only legal in compile mode (state=0 -> 1)
+  mov [bx+6], di
+  inc byte [bx] ; the ; word is only legal in compile mode (state=0 -> 1)
   jmp NEXT
 
 last_primitive equ header_semi

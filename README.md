@@ -1,11 +1,11 @@
 # 🌸 UtaForth
 
-> 342-byte 16-bit Forth in pure Netwide Assembler (NASM)
+> 322-byte 16-bit Forth in pure Netwide Assembler (NASM)
 
 ## Files
 
 - [`uta.asm`](uta.asm): Forth source (NASM, `BITS 16`, `ORG 0x100`; assembles to a DOS .COM)
-- [`uta.com`](uta.com): Assembled binary (342 bytes)
+- [`uta.com`](uta.com): Assembled binary (322 bytes)
 - [`run.py`](run.py): Minimal Unicorn-based 8086 emulator that loads `uta.com` and dispatches DOS INT 20h/21h/29h
 - [`bf.fth`](bf.fth), [`hello.fth`](hello.fth): Sample Forth programs
 
@@ -20,9 +20,9 @@ python3 run.py uta.com hello.fth
 python3 run.py uta.com bf.fth
 ```
 
-Verified under DOSBox-X (`uta.com < hello.fth`, `uta.com < bf.fth`). The binary uses only `INT 21h/AH=3F,8`, `INT 29h`, `INT 20h`, and `push sp` (286+ semantics), so it should also run on real DOS. Filenames are kept 8.3-compatible.
+Verified under DOSBox-X (`uta.com < hello.fth`, `uta.com < bf.fth`). The binary uses only `INT 21h/AH=3F,8`, `INT 29h`, `INT 20h`, and `push sp` (286+ semantics), so it should also run on real DOS. The `make test` target runs via the bundled Python emulator. Filenames are kept 8.3-compatible.
 
-## What's in 342 Bytes
+## What's in 322 Bytes
 
 13 primitives, the only ones the bootstrap can't define for itself:
 
@@ -48,11 +48,12 @@ Everything else (`dup`, `drop`, `over`, `swap`, `if`/`then`, `do`/`loop`, `c@`, 
 
 - **Direct-threaded code (DTC).** Each compiled cell is a 16-bit address of executable code. For primitives that's the body itself; for colon definitions it's a `call docol` prologue followed by the body cells. `NEXT = lodsw/jmp ax` (3 bytes).
 - **Cells are 2 bytes** because the bootstrap hard-codes that (`: cells lit [ 2 , ] ;`, `here @ 2 + here !`).
-- **SI = Forth IP, BP = return stack, SP = data stack, AX/BX/CX/DX/DI = scratch.** The outer interpreter freely uses CALL/RET on SP because every push has a matching pop, leaving the user's data stack contents untouched.
+- **SI = Forth IP, BP = return stack, SP = data stack, AX/BX/CX/DX/DI = scratch.** BX is permanently loaded with `state_struct` after startup, so state variables are accessed as `[bx]`, `[bx+2]`, `[bx+4]`, `[bx+6]`, every 2–3 bytes instead of 4-byte `[disp16]`.
 - **Outer interpreter <-> inner interpreter** transition via a 4-byte trampoline: stash the target CFA at `tramp[0]`, set SI to `tramp`, `jmp NEXT`. After the word finishes, its `jmp NEXT` lodsw's `tramp[2]` and `jmp ax` lands on `main_loop`.
 - **Input** is slurped once at startup (DOS INT 21h AH=3F). The buffer (zero-initialised) doubles as its own EOF sentinel: when the parser hits a 0 byte, it returns CX=0.
 - **Dictionary entry layout:** `link(2) | flags|length(1) | name | CFA...`. The CFA is direct code (primitives) or a `call docol` prologue plus body cells (colons). `latest @ 2 +` is the flags byte (bit 7 = immediate), exactly as the bootstrap expects.
 - **NEXT lives in the middle of the primitives section** so every primitive's `jmp NEXT` is a 2-byte short jump.
+- **`pushax` tail.** Four primitives (`0#`, `+`, `nand`, `key`) all end with `push ax; jmp NEXT`. A single shared `pushax:` block (3 bytes) replaces four 3-byte tails, saving 1 byte net while keeping every primitive's entry at a 2-byte short-jump distance from NEXT.
 
 ## Notes on the Test Files
 
@@ -85,6 +86,10 @@ Everything else (`dup`, `drop`, `over`, `swap`, `if`/`then`, `do`/`loop`, `c@`, 
 | Merge immediate/state test into one OR   | 347 |
 | `pop si` in DOCOL, fall through to NEXT  | 344 |
 | `push imm16` for `s@`; `xchg` link in `:` | 342 |
+| Remove `cld` (DF=0 at COM entry)         | 341 |
+| `cbw` in `key`; shared `pushax` tail     | 340 |
+| `lodsb` in `parse_word` (SI with push/pop)| 338 |
+| BX = permanent state-struct pointer       | 322 |
 
 ## Licence
 
