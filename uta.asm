@@ -76,9 +76,9 @@ compile_and_loop:
   jmp main_loop
 
 execute_word:
-  mov [trampoline], si
-  mov si, trampoline
-  jmp NEXT
+  xchg ax, si
+  mov si, main_loop_cell
+  jmp ax
 
 done:
   int 0x20
@@ -116,11 +116,7 @@ s_in:     dw INPUT_BUFFER
 s_latest: dw last_primitive
 s_here:   dw heap_start
 
-; The outer interpreter parks the target CFA in trampoline[0], sets SI
-; to trampoline, and jmps NEXT. After the word's NEXT lodsw's the second
-; cell, `jmp ax` lands on main_loop.
-trampoline: dw 0
-            dw main_loop
+main_loop_cell: dw main_loop
 
 ; Dictionary entry layout:
 ;   +0        link         (2 bytes)
