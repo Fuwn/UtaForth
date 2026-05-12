@@ -100,6 +100,7 @@ Everything else (`dup`, `drop`, `over`, `swap`, `if`/`then`, `do`/`loop`, `c@`, 
 | Count parse length during scan             | 295 |
 | `s@` before DOCOL; reuse `docol - 2` low byte | 293 |
 | EOF exits in `parse_word`; keep DOCOL layout | 291 |
+| `;` reuses CFA high byte; rebalance DOCOL layout | 290 |
 
 ## Licence
 

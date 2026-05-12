@@ -125,17 +125,9 @@ header_semi:
   dw header_colon
   db F_IMMEDIATE|1, ';'
 cfa_semi:
-  mov ax, cfa_exit
+  mov al, cfa_exit
   inc byte [bx] ; the ; word is only legal in compile mode (state=0 -> 1)
   jmp compile_and_loop
-
-header_at:
-  dw 0
-  db 1, '@'
-cfa_at:
-  pop di
-  push word [di]
-  jmp NEXT
 
 header_store:
   dw header_at
@@ -220,6 +212,15 @@ cfa_emit:
   int 0x29 ; DOS fast console output (AL -> stdout)
   jmp NEXT
 
+main_loop_cell: dw main_loop
+
+header_sat:
+  dw header_emit
+  db 2, 's@'
+cfa_sat:
+  push bx
+  jmp NEXT
+
 ; DOCOL is invoked by every colon definition's `call docol` prologue.
 ; The CALL has pushed the body start onto SP (briefly polluting the data
 ; stack); we save the current IP to the return stack, then `pop si` lifts
@@ -231,13 +232,12 @@ docol:
   pop si
   jmp NEXT
 
-main_loop_cell: dw main_loop
-
-header_sat:
-  dw header_emit
-  db 2, 's@'
-cfa_sat:
-  push bx
+header_at:
+  dw 0
+  db 1, '@'
+cfa_at:
+  pop di
+  push word [di]
   jmp NEXT
 
 header_colon:
