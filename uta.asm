@@ -45,8 +45,8 @@ main_loop:
   test di, di
   jz main_loop
   mov al, [di+2]
-  and al, 0x7F
-  cmp al, cl
+  xor al, cl
+  test al, 0x7F
   jne .next
 
   push di
@@ -63,8 +63,6 @@ main_loop:
 
 found:
   ; SI = CFA address (cmpsb advanced past the matched name)
-  mov al, [di+2]
-  and al, F_IMMEDIATE
   or al, [bx]
   jnz execute_word
 
@@ -95,12 +93,11 @@ parse_word:
   cmp al, ' '
   jbe .skip
 .scan:
+  inc cx
   lodsb
   cmp al, ' '
   ja .scan
   dec si
-  mov cx, si
-  sub cx, dx
 .done:
   xchg si, [bx+2]
   ret
@@ -218,6 +215,13 @@ NEXT:
   lodsw
   jmp ax
 
+header_sat:
+  dw header_emit
+  db 2, 's@'
+cfa_sat:
+  push bx
+  jmp NEXT
+
 ; DOCOL is invoked by every colon definition's `call docol` prologue.
 ; The CALL has pushed the body start onto SP (briefly polluting the data
 ; stack); we save the current IP to the return stack, then `pop si` lifts
@@ -237,13 +241,6 @@ cfa_emit:
   int 0x29 ; DOS fast console output (AL -> stdout)
   jmp NEXT
 
-header_sat:
-  dw header_emit
-  db 2, 's@'
-cfa_sat:
-  push bx
-  jmp NEXT
-
 header_colon:
   dw header_sat
   db 1, ':'
@@ -261,9 +258,9 @@ cfa_colon:
   rep movsb
   pop si
 
-  mov al, 0xE8     ; CALL rel16: emit `call docol` as the colon prologue
-  stosb
+  ; docol is placed so docol - 2 has low byte 0xE8, the CALL rel16 opcode.
   mov ax, docol - 2
+  stosb
   sub ax, di
   stosw
 
