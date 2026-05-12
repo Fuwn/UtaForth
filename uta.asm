@@ -14,6 +14,7 @@
 ; data stack contents undisturbed.
 ;
 ; Memory layout: input buffer at 0xC000 is read once at startup;
+; BP starts there too, so the return stack grows below the input buffer;
 ; whatever bytes the OS doesn't fill stay zero (Unicorn/DOS behavior),
 ; so a 0 byte serves as the EOF sentinel, and we never store/read a length
 
@@ -23,16 +24,14 @@ ORG 0x100
 F_IMMEDIATE       equ 0x80
 INPUT_BUFFER      equ 0xC000
 INPUT_BUFFER_SIZE equ 0x2000
-RETURN_STACK_TOP  equ 0xE000
 
 start:
-  mov bp, RETURN_STACK_TOP
-
   ; BX is already 0 at .COM entry (and in Unicorn) -> stdin.
   mov ah, 0x3F
   mov cx, INPUT_BUFFER_SIZE
   mov dx, INPUT_BUFFER
   int 0x21
+  mov bp, dx
 
   mov bx, state_struct
 
@@ -214,11 +213,12 @@ cfa_emit:
 
 main_loop_cell: dw main_loop
 
-header_sat:
-  dw header_emit
-  db 2, 's@'
-cfa_sat:
-  push bx
+header_at:
+  dw 0
+  db 1, '@'
+cfa_at:
+  pop di
+  push word [di]
   jmp NEXT
 
 ; DOCOL is invoked by every colon definition's `call docol` prologue.
@@ -232,12 +232,11 @@ docol:
   pop si
   jmp NEXT
 
-header_at:
-  dw 0
-  db 1, '@'
-cfa_at:
-  pop di
-  push word [di]
+header_sat:
+  dw header_emit
+  db 2, 's@'
+cfa_sat:
+  push bx
   jmp NEXT
 
 header_colon:

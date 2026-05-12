@@ -1,11 +1,11 @@
 # 🌸 UtaForth
 
-> 291-byte 16-bit Forth in pure Netwide Assembler (NASM)
+> 289-byte 16-bit Forth in pure Netwide Assembler (NASM)
 
 ## Files
 
 - [`uta.asm`](uta.asm): Forth source (NASM, `BITS 16`, `ORG 0x100`; assembles to a DOS .COM)
-- [`uta.com`](uta.com): Assembled binary (291 bytes)
+- [`uta.com`](uta.com): Assembled binary (289 bytes)
 - [`run.py`](run.py): Minimal Unicorn-based 8086 emulator that loads `uta.com` and dispatches DOS INT 20h/21h/29h
 - [`bf.fth`](bf.fth), [`hello.fth`](hello.fth): Sample Forth programs
 
@@ -22,7 +22,7 @@ python3 run.py uta.com bf.fth
 
 Verified under DOSBox-X (`uta.com < hello.fth`, `uta.com < bf.fth`). The binary uses only `INT 21h/AH=3F,8`, `INT 29h`, `INT 20h`, and `push sp` (286+ semantics), so it should also run on real DOS. The `make test` target runs via the bundled Python emulator. Filenames are kept 8.3-compatible.
 
-## What's in 291 Bytes
+## What's in 289 Bytes
 
 13 primitives, the only ones the bootstrap can't define for itself:
 
@@ -50,7 +50,7 @@ Everything else (`dup`, `drop`, `over`, `swap`, `if`/`then`, `do`/`loop`, `c@`, 
 - **Cells are 2 bytes** because the bootstrap hard-codes that (`: cells lit [ 2 , ] ;`, `here @ 2 + here !`).
 - **SI = Forth IP, BP = return stack, SP = data stack, AX/BX/CX/DX/DI = scratch.** BX is permanently loaded with `state_struct` after startup, so state variables are accessed as `[bx]`, `[bx+2]`, `[bx+4]`, `[bx+6]`, every 2-3 bytes instead of 4-byte `[disp16]`.
 - **Outer interpreter <-> inner interpreter** transition: `xchg ax, si` puts the CFA in AX, SI is parked on a single 2-byte `main_loop_cell` (which holds `main_loop`'s address), then `jmp ax` runs the primitive. The word's terminating `jmp NEXT` lodsw's that cell and `jmp ax` lands on `main_loop`.
-- **Input** is slurped once at startup (DOS INT 21h AH=3F). The buffer (zero-initialised) doubles as its own EOF sentinel: when the parser hits a 0 byte, it returns CX=0.
+- **Input** is slurped once at startup (DOS INT 21h AH=3F). The buffer (zero-initialised) doubles as its own EOF sentinel: when the parser hits a 0 byte, it exits through INT 20h.
 - **Dictionary entry layout:** `link(2) | flags|length(1) | name | CFA...`. The CFA is direct code (primitives) or a `call docol` prologue plus body cells (colons). `latest @ 2 +` is the flags byte (bit 7 = immediate), exactly as the bootstrap expects.
 - **NEXT lives in the middle of the primitives section** so every primitive's `jmp NEXT` is a 2-byte short jump.
 - **`pushax` tail and fall-through chain.** Four primitives (`0#`, `+`, `nand`, `key`) end with `push ax; jmp NEXT`. They share a single `pushax:` block, and `pushax:` itself falls through into NEXT, so `cfa_key` -> `pushax` -> `NEXT` is one straight chain with no jumps. `docol` pays the resulting `jmp NEXT` (it can't fall through anymore). Net: 2 jumps removed from the chain, 1 added on `docol`.
@@ -101,6 +101,7 @@ Everything else (`dup`, `drop`, `over`, `swap`, `if`/`then`, `do`/`loop`, `c@`, 
 | `s@` before DOCOL; reuse `docol - 2` low byte | 293 |
 | EOF exits in `parse_word`; keep DOCOL layout | 291 |
 | `;` reuses CFA high byte; rebalance DOCOL layout | 290 |
+| BP starts at `INPUT_BUFFER`; rebalance DOCOL layout | 289 |
 
 ## Licence
 
