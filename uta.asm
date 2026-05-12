@@ -38,7 +38,6 @@ start:
 
 main_loop:
   call parse_word
-  jcxz done
 
   mov di, [bx+4]
 .scan:
@@ -81,7 +80,7 @@ execute_word:
 done:
   int 0x20
 
-; Returns: DX = name address, CX = length (CX=0 => EOF).
+; Returns: DX = name address, CX = length. EOF exits.
 parse_word:
   xchg si, [bx+2]
   xor cx, cx
@@ -89,7 +88,7 @@ parse_word:
   mov dx, si
   lodsb
   test al, al
-  jz .done
+  jz done
   cmp al, ' '
   jbe .skip
 .scan:
@@ -112,8 +111,6 @@ s_state:  dw 1
 s_in:     dw INPUT_BUFFER
 s_latest: dw last_primitive
 s_here:   dw heap_start
-
-main_loop_cell: dw main_loop
 
 ; Dictionary entry layout:
 ;   +0        link         (2 bytes)
@@ -215,11 +212,12 @@ NEXT:
   lodsw
   jmp ax
 
-header_sat:
-  dw header_emit
-  db 2, 's@'
-cfa_sat:
-  push bx
+header_emit:
+  dw header_key
+  db 4, 'emit'
+cfa_emit:
+  pop ax
+  int 0x29 ; DOS fast console output (AL -> stdout)
   jmp NEXT
 
 ; DOCOL is invoked by every colon definition's `call docol` prologue.
@@ -233,12 +231,13 @@ docol:
   pop si
   jmp NEXT
 
-header_emit:
-  dw header_key
-  db 4, 'emit'
-cfa_emit:
-  pop ax
-  int 0x29 ; DOS fast console output (AL -> stdout)
+main_loop_cell: dw main_loop
+
+header_sat:
+  dw header_emit
+  db 2, 's@'
+cfa_sat:
+  push bx
   jmp NEXT
 
 header_colon:
