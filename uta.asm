@@ -38,14 +38,19 @@ start:
 main_loop:
   call parse_word
 
-  mov di, [bx+4]
+  ; Walk the dictionary chain. DI starts at &latest (a pseudo-entry whose
+  ; "link" field is latest itself), so the link-follow at the loop top loads
+  ; the first real entry, then chases links. A name match falls through to
+  ; found; every miss loops back to the single link-follow.
+  lea di, [bx+4]
 .scan:
+  mov di, [di]
   test di, di
   jz main_loop
   mov al, [di+2]
   xor al, cl
   test al, 0x7F
-  jne .next
+  jne .scan
 
   push di
   push cx
@@ -54,17 +59,16 @@ main_loop:
   repe cmpsb
   pop cx
   pop di
-  je found
-.next:
-  mov di, [di]
-  jmp .scan
+  jne .scan
 
 found:
-  ; SI = CFA address (cmpsb advanced past the matched name)
+  ; SI = CFA (cmpsb advanced past the matched name). The shared xchg
+  ; (AX<->SI, so AX=CFA) is hoisted above the branch; xchg leaves flags
+  ; untouched, so jnz still tests the or result.
   or al, [bx]
+  xchg ax, si
   jnz execute_word
 
-  xchg ax, si
 compile_and_loop:
   mov di, [bx+6]
   stosw
@@ -72,7 +76,6 @@ compile_and_loop:
   jmp main_loop
 
 execute_word:
-  xchg ax, si
   mov si, main_loop_cell
   jmp ax
 
@@ -168,16 +171,6 @@ cfa_plus:
   add ax, di
   jmp pushax
 
-header_nand:
-  dw header_plus
-  db 4, 'nand'
-cfa_nand:
-  pop ax
-  pop di
-  and ax, di
-  not ax
-  jmp pushax
-
 header_exit:
   dw header_nand
   db 4, 'exit'
@@ -203,42 +196,10 @@ NEXT:
   lodsw
   jmp ax
 
-header_emit:
-  dw header_key
-  db 4, 'emit'
-cfa_emit:
-  pop ax
-  int 0x29 ; DOS fast console output (AL -> stdout)
-  jmp NEXT
-
-main_loop_cell: dw main_loop
-
-header_at:
-  dw 0
-  db 1, '@'
-cfa_at:
-  pop di
-  push word [di]
-  jmp NEXT
-
-; DOCOL is invoked by every colon definition's `call docol` prologue.
-; The CALL has pushed the body start onto SP (briefly polluting the data
-; stack); we save the current IP to the return stack, then `pop si` lifts
-; the body off SP.
-docol:
-  dec bp
-  dec bp
-  mov [bp], si
-  pop si
-  jmp NEXT
-
-header_sat:
-  dw header_emit
-  db 2, 's@'
-cfa_sat:
-  push bx
-  jmp NEXT
-
+; Physical order is independent of dictionary-chain order (set by the dw
+; links), so blocks are arranged purely to land docol on an address ending
+; in 0xEA (see the prologue emitter's docol - 2 trick below): cfa_colon sits
+; just ahead of docol, and nand is parked at the tail.
 header_colon:
   dw header_sat
   db 1, ':'
@@ -265,6 +226,52 @@ cfa_colon:
   mov [bx+6], di
   mov [bx], cl ; CX is 0 after rep movsb -> compile mode
   jmp NEXT
+
+main_loop_cell: dw main_loop
+
+; DOCOL is invoked by every colon definition's `call docol` prologue.
+; The CALL has pushed the body start onto SP (briefly polluting the data
+; stack); we save the current IP to the return stack, then `pop si` lifts
+; the body off SP.
+docol:
+  dec bp
+  dec bp
+  mov [bp], si
+  pop si
+  jmp NEXT
+
+header_emit:
+  dw header_key
+  db 4, 'emit'
+cfa_emit:
+  pop ax
+  int 0x29 ; DOS fast console output (AL -> stdout)
+  jmp NEXT
+
+header_at:
+  dw 0
+  db 1, '@'
+cfa_at:
+  pop di
+  push word [di]
+  jmp NEXT
+
+header_sat:
+  dw header_emit
+  db 2, 's@'
+cfa_sat:
+  push bx
+  jmp NEXT
+
+header_nand:
+  dw header_plus
+  db 4, 'nand'
+cfa_nand:
+  pop ax
+  pop di
+  and ax, di
+  not ax
+  jmp pushax
 
 last_primitive equ header_semi
 

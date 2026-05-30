@@ -1,11 +1,11 @@
 # 🌸 UtaForth
 
-> 289-byte 16-bit Forth in pure Netwide Assembler (NASM)
+> 286-byte 16-bit Forth in pure Netwide Assembler (NASM)
 
 ## Files
 
 - [`uta.asm`](uta.asm): Forth source (NASM, `BITS 16`, `ORG 0x100`; assembles to a DOS .COM)
-- [`uta.com`](uta.com): Assembled binary (289 bytes)
+- [`uta.com`](uta.com): Assembled binary (286 bytes)
 - [`run.py`](run.py): Minimal Unicorn-based 8086 emulator that loads `uta.com` and dispatches DOS INT 20h/21h/29h
 - [`bf.fth`](bf.fth), [`hello.fth`](hello.fth): Sample Forth programs
 
@@ -102,6 +102,7 @@ Everything else (`dup`, `drop`, `over`, `swap`, `if`/`then`, `do`/`loop`, `c@`, 
 | EOF exits in `parse_word`; keep DOCOL layout | 291 |
 | `;` reuses CFA high byte; rebalance DOCOL layout | 290 |
 | BP starts at `INPUT_BUFFER`; rebalance DOCOL layout | 289 |
+| Pseudo-entry scan + hoisted found `xchg`; reorder `:`/`nand` round DOCOL | 286 |
 
 ## Licence
 
