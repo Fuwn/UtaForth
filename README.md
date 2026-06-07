@@ -22,7 +22,7 @@ python3 run.py uta.com bf.fth
 
 Verified under DOSBox-X (`uta.com < hello.fth`, `uta.com < bf.fth`). The binary uses only `INT 21h/AH=3F,8`, `INT 29h`, `INT 20h`, and `push sp` (286+ semantics), so it should also run on real DOS. The `make test` target runs via the bundled Python emulator. Filenames are kept 8.3-compatible.
 
-## What's in 289 Bytes
+## What's in 286 Bytes
 
 13 primitives, the only ones the bootstrap can't define for itself:
 
